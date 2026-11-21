@@ -18,9 +18,12 @@ static struct Screen *scr;
 static struct Window *win;
 static UBYTE *buf;
 static unsigned sw,sh,k=2,scan=0,windowed=0,owns_screen=0;
+static unsigned direct_w,direct_h,direct_scale;
+static int mode720p;
 static UBYTE rtg_keys[128];
 static int rtg_close_requested=0;
-void frf_pd_rtg_config(int s,int l){k=(s>=1&&s<=4)?s:2;scan=(l==25||l==50||l==75)?l:0;}
+void frf_pd_rtg_config(int s,int l){k=(s>=0&&s<=4)?s:2;scan=(l==25||l==50||l==75)?l:0;}
+void frf_pd_rtg_mode_720p(int on){mode720p=(on!=0);}
 void frf_pd_rtg_window(int on){windowed=on!=0;}
 void frf_pd_rtg_shutdown(void){
  memset(rtg_keys,0,sizeof(rtg_keys));
@@ -36,7 +39,9 @@ int frf_pd_rtg_init(void){
  ULONG mode;
  memset(rtg_keys,0,sizeof(rtg_keys));
  rtg_close_requested=0;
- sw=k>=3?1280:(k==2?640:320);sh=k>=4?1080:(k>=3?720:(k==2?480:240));
+ direct_w=direct_h=direct_scale=0;
+ sw=(mode720p||k==0)?1280:(k>=3?1280:(k==2?640:320));
+ sh=(mode720p||k==0)?720:(k>=4?1080:(k>=3?720:(k==2?480:240)));
  puts("[FRF RTG] opening CyberGraphX");fflush(stdout);
  if(!IntuitionBase){IntuitionBase=(struct IntuitionBase*)OpenLibrary("intuition.library",39);if(IntuitionBase)rtg_owns_intuition=1;}
  printf("[RTG] IntuitionBase=%p\n",(void*)IntuitionBase);fflush(stdout);
@@ -94,6 +99,7 @@ void frf_pd_rtg_poll_events(void){
   UWORD code=m->Code;
   if(cls==IDCMP_RAWKEY){
    rtg_keys[code&0x7f]=(code&0x80)?0:1;
+   if((code&0x7f)==0x45 && !(code&0x80)) rtg_close_requested=1;
   }else if(cls==IDCMP_CLOSEWINDOW){
    rtg_close_requested=1;
   }else if(cls==IDCMP_INACTIVEWINDOW){
@@ -102,6 +108,7 @@ void frf_pd_rtg_poll_events(void){
   ReplyMsg((struct Message*)m);
  }
 }
+int frf_pd_rtg_quit_requested(void){return rtg_close_requested;}
 int frf_pd_rtg_key_state(unsigned id){
  switch(id){
  case RETRO_DEVICE_ID_JOYPAD_UP: return rtg_keys[0x4c];
@@ -120,66 +127,108 @@ int frf_pd_rtg_key_state(unsigned id){
  }
 }
 
-static int rtg_direct565(const void *pixels,unsigned w,unsigned h,unsigned pitch){
- APTR lock; APTR addr=0; ULONG fmt=0,bpr=0,bpp=0;
- unsigned x,y,ox,oy; const UBYTE *src=(const UBYTE*)pixels;
+/* Accelerated native RGB565 integer scaler. This is conservative about window
+ * ownership: bypass Intuition clipping only when our window is frontmost. */
+static unsigned rtg_scale_for(unsigned w,unsigned h)
+{
+ int i;
+ if(k) return k;
+ for(i=4;i>=1;--i) if(w*(unsigned)i<=sw && h*(unsigned)i<=sh) return (unsigned)i;
+ return 0;
+}
+static UWORD rtg_scan_rgb565(UWORD v)
+{
+ unsigned f=100U-scan;
+ return (UWORD)(((((v>>11)&31U)*f/100U)<<11)|
+                (((((v>>5)&63U)*f/100U)<<5))|((v&31U)*f/100U));
+}
+static int rtg_direct565(const void *pixels,unsigned w,unsigned h,unsigned pitch)
+{
+ APTR lock; APTR addr=0;ULONG fmt=0,bpr=0,bpp=0;
+ unsigned scale=rtg_scale_for(w,h),origin_x,origin_y,ox,oy,x,y,i,j;
+ LONG wx,wy;
+ const UBYTE *src=(const UBYTE*)pixels;
  UBYTE *dst;
- if(k!=1 || scan || !win || !scr || !scr->RastPort.BitMap)return 0;
- /* Direct screen writes bypass window layer clipping: permit only top window. */
- if(windowed && scr->FirstWindow!=win)return 0;
- ox=(unsigned)(win->LeftEdge+(windowed?win->BorderLeft:0)+(sw-w)/2);
- oy=(unsigned)(win->TopEdge+(windowed?win->BorderTop:0)+(sh-h)/2);
- if(ox+w>scr->Width||oy+h>scr->Height)return 0;
- lock=LockBitMapTags(scr->RastPort.BitMap,LBMI_BASEADDRESS,(ULONG)&addr,
-   LBMI_BYTESPERROW,(ULONG)&bpr,LBMI_BYTESPERPIX,(ULONG)&bpp,
-   LBMI_PIXFMT,(ULONG)&fmt,TAG_DONE);
- if(!lock)return 0;
- if(!addr||bpp!=2||(fmt!=PIXFMT_RGB16&&fmt!=PIXFMT_RGB16PC)||
-    bpr<(ox+w)*2){UnLockBitMap(lock);return 0;}
- dst=(UBYTE*)addr+oy*bpr+ox*2;
- if(fmt==PIXFMT_RGB16){
-  for(y=0;y<h;y++)memcpy(dst+y*bpr,src+y*pitch,w*2);
- }else{
-  for(y=0;y<h;y++){
-   const UBYTE *s=src+y*pitch;
-   UBYTE *d=dst+y*bpr;
-   for(x=0;x<w;x++){d[x*2]=s[x*2+1];d[x*2+1]=s[x*2];}
-  }
+ if(!scale || w*scale>sw || h*scale>sh || !win || !scr || !scr->RastPort.BitMap) return 0;
+ if(windowed && scr->FirstWindow!=win) {direct_w=0;return 0;}
+ wx=(LONG)win->LeftEdge+(windowed?win->BorderLeft:0);
+ wy=(LONG)win->TopEdge+(windowed?win->BorderTop:0);
+ if(wx<0 || wy<0) {direct_w=0;return 0;}
+ origin_x=(unsigned)wx;
+ origin_y=(unsigned)wy;
+ ox=origin_x+(sw-w*scale)/2U;
+ oy=origin_y+(sh-h*scale)/2U;
+ if(origin_x+sw>scr->Width || origin_y+sh>scr->Height) return 0;
+ lock=LockBitMapTags(scr->RastPort.BitMap,
+     LBMI_BASEADDRESS,(ULONG)&addr,LBMI_BYTESPERROW,(ULONG)&bpr,
+     LBMI_BYTESPERPIX,(ULONG)&bpp,LBMI_PIXFMT,(ULONG)&fmt,TAG_DONE);
+ if(!lock) return 0;
+ if(!addr || bpp!=2 || (fmt!=PIXFMT_RGB16 && fmt!=PIXFMT_RGB16PC) ||
+    bpr < (origin_x+sw)*2U) {UnLockBitMap(lock);return 0;}
+ /* Clear unused letterboxing only at initialization/geometry transitions. */
+ if(direct_w!=w || direct_h!=h || direct_scale!=scale) {
+     for(y=0;y<sh;y++)
+         memset((UBYTE*)addr+(origin_y+y)*bpr+origin_x*2U,0,sw*2U);
+     direct_w=w;direct_h=h;direct_scale=scale;
+ }
+ dst=(UBYTE*)addr+oy*bpr+ox*2U;
+ if(scale==1 && !scan && fmt==PIXFMT_RGB16) {
+     for(y=0;y<h;y++) memcpy(dst+y*bpr,src+y*pitch,w*2U);
+ } else {
+     for(y=0;y<h;y++) {
+         const UWORD *sr=(const UWORD*)(src+y*pitch);
+         for(i=0;i<scale;i++) {
+             int dark=scan && (scale>1 ? i==scale-1 : (y&1U)!=0);
+             UBYTE *dr=dst+(y*scale+i)*bpr;
+             if(i>0 && !dark) {memcpy(dr,dr-bpr,w*scale*2U);continue;}
+             for(x=0;x<w;x++) {
+                 UWORD v=sr[x];
+                 if(dark) v=rtg_scan_rgb565(v);
+                 for(j=0;j<scale;j++) {
+                     unsigned at=(x*scale+j)*2U;
+                     if(fmt==PIXFMT_RGB16) {
+                         dr[at]=(UBYTE)(v>>8);dr[at+1]=(UBYTE)v;
+                     } else {
+                         dr[at]=(UBYTE)v;dr[at+1]=(UBYTE)(v>>8);
+                     }
+                 }
+             }
+         }
+     }
  }
  UnLockBitMap(lock);
  return 1;
 }
-int frf_pd_rtg_present(const void *p,unsigned w,unsigned h,unsigned pitch){
- unsigned x,y,i,j,left,top;
+int frf_pd_rtg_present(const void *p,unsigned w,unsigned h,unsigned pitch)
+{
+ unsigned scale=rtg_scale_for(w,h),x,y,i,j,left,top;
  const UBYTE *src=(const UBYTE*)p;
  frf_pd_rtg_poll_events();
- if(rtg_close_requested){puts("[FRF RTG] close requested");return 0;}
- if(!p||!buf||!win||!w||!h||w>512||h>512||
-    pitch<w*2||w*k>sw||h*k>sh)return 0;
- if(rtg_direct565(p,w,h,pitch))return 1;
- left=(sw-w*k)/2;top=(sh-h*k)/2;
- memset(buf,0,sw*sh*3);
- for(y=0;y<h;y++){
-  const UWORD *row=(const UWORD*)(src+y*pitch);
-  for(i=0;i<k;i++){
-   UBYTE *dst=buf+((top+y*k+i)*sw+left)*3;
-   for(x=0;x<w;x++){
-    unsigned v=row[x];
-    if(scan&&i==k-1){unsigned f=100-scan;
-      v=((((v>>11)&31)*f/100)<<11)|
-        ((((v>>5)&63)*f/100)<<5)|((v&31)*f/100);
-    }
-    for(j=0;j<k;j++){
-     unsigned n=(x*k+j)*3;
-     dst[n]=(UBYTE)(((v>>11)&31)*255/31);
-     dst[n+1]=(UBYTE)(((v>>5)&63)*255/63);
-     dst[n+2]=(UBYTE)((v&31)*255/31);
-    }
-   }
-  }
+ if(rtg_close_requested) {puts("[FRF RTG] quit requested");return 0;}
+ if(!p || !buf || !win || !w || !h || !scale || w>512 || h>512 ||
+    pitch<w*2U || w*scale>sw || h*scale>sh) return 0;
+ if(rtg_direct565(p,w,h,pitch)) return 1;
+ left=(sw-w*scale)/2U;top=(sh-h*scale)/2U;
+ memset(buf,0,sw*sh*3U);
+ for(y=0;y<h;y++) {
+     const UWORD *row=(const UWORD*)(src+y*pitch);
+     for(i=0;i<scale;i++) {
+         UBYTE *dr=buf+((top+y*scale+i)*sw+left)*3U;
+         int dark=scan && (scale>1?i==scale-1:(y&1U)!=0);
+         for(x=0;x<w;x++) {
+             UWORD v=row[x];
+             if(dark) v=rtg_scan_rgb565(v);
+             for(j=0;j<scale;j++) {
+                 unsigned n=(x*scale+j)*3U;
+                 dr[n]=(UBYTE)(((v>>11)&31U)*255U/31U);
+                 dr[n+1]=(UBYTE)(((v>>5)&63U)*255U/63U);
+                 dr[n+2]=(UBYTE)((v&31U)*255U/31U);
+             }
+         }
+     }
  }
- WritePixelArray(buf,0,0,sw*3,win->RPort,
-   windowed?win->BorderLeft:0,windowed?win->BorderTop:0,
-   sw,sh,RECTFMT_RGB);
+ WritePixelArray(buf,0,0,sw*3U,win->RPort,
+     windowed?win->BorderLeft:0,windowed?win->BorderTop:0,
+     sw,sh,RECTFMT_RGB);
  return 1;
 }

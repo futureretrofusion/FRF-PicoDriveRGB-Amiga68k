@@ -23,11 +23,13 @@
 #include <libretro.h>
 
 #define FRF_PROJECT_NAME "Future Retro Fusion PicoDriveRGB"
-#define FRF_PROJECT_VERSION "0.2.17"
-#define FRF_PROJECT_TARGET "AmigaOS 68k / HAM6 or CyberGraphX RTG"
+#define FRF_PROJECT_VERSION "0.2.20"
+#define FRF_PROJECT_TARGET "AmigaOS 68k / HAM6, HAM8, AGA or CyberGraphX RTG"
 
 #include "frf_pd_ham6.h"
 #include "frf_pd_rtg.h"
+#include "frf_pd_aga.h"
+#include "frf_pd_keys.h"
 #include "frf_pd_audio.h"
 #include "frf_pd_input.h"
 #include "frf_pd_timer.h"
@@ -46,7 +48,8 @@ static const char *g_renderer="accurate";
 static const char *g_audio_rate="44100";
 static int g_frfcp_enabled=1;
 static int g_dbuf_enabled=0;
-static int g_backend_rtg=0, g_rtg_scale=2, g_rtg_scan=0, g_rtg_window=0;
+static int g_backend_rtg=0, g_backend_aga=0, g_aga_colors=256;
+static int g_rtg_scale=2, g_rtg_scan=0, g_rtg_window=0, g_rtg_720p=0;
 static int g_timer_ok;
 static void (*g_audio_status_cb)(bool,unsigned,bool);
 static int g_audio_status_started;
@@ -115,6 +118,7 @@ static void frf_cleanup(void)
     frfcp_shutdown();
     frf_pd_input_shutdown();
     if(g_backend_rtg) frf_pd_rtg_shutdown();
+    else if(g_backend_aga) frf_pd_aga_shutdown();
     else frf_pd_ham6_shutdown();
 }
 
@@ -288,13 +292,18 @@ static void frf_video(const void *data,unsigned width,unsigned height,size_t pit
                width,height,(unsigned long)pitch);
         g_last_w=width; g_last_h=height;
     }
-    if(!(g_backend_rtg?frf_pd_rtg_present(data,width,height,(unsigned)pitch):frf_pd_ham6_present_rgb565(data,width,height,(unsigned)pitch))) {
+    if(!(g_backend_rtg?frf_pd_rtg_present(data,width,height,(unsigned)pitch):
+         (g_backend_aga?frf_pd_aga_present_rgb565(data,width,height,(unsigned)pitch):
+                        frf_pd_ham6_present_rgb565(data,width,height,(unsigned)pitch)))) {
         printf("FRF PicoDriveRGB: DirectChip presenter unavailable; aborting\n");
         g_quit=1; return;
     }
     /* Deadline timer owns game speed. WaitTOF is only an emergency fallback
      * if timer.device could not be opened. */
-    if(!g_timer_ok && !g_backend_rtg) frf_pd_ham6_wait_vblank();
+    if(!g_timer_ok && !g_backend_rtg) {
+        if(g_backend_aga) frf_pd_aga_wait_vblank();
+        else frf_pd_ham6_wait_vblank();
+    }
     ++g_presented;
 }
 
@@ -314,15 +323,23 @@ static size_t frf_audio_batch(const int16_t *data,size_t frames)
 
 extern void frf_pd_rtg_poll_events(void);
 extern int frf_pd_rtg_key_state(unsigned id);
+extern int frf_pd_rtg_quit_requested(void);
 static void frf_input_poll(void) {
-    if(g_backend_rtg) frf_pd_rtg_poll_events();
+    if(g_backend_rtg) {
+        frf_pd_rtg_poll_events();
+        if(frf_pd_rtg_quit_requested()) g_quit=1;
+    } else {
+        frf_pd_keys_poll();
+        if(frf_pd_keys_quit()) g_quit=1;
+    }
     frf_pd_input_poll();
 }
 
 static int16_t frf_input_state(unsigned port,unsigned device,unsigned index,unsigned id)
 {
     if(device!=RETRO_DEVICE_JOYPAD || index!=0U) return 0;
-    return (int16_t)(frf_pd_input_state(port,id) || (g_backend_rtg && port==0U && frf_pd_rtg_key_state(id)));
+    return (int16_t)(frf_pd_input_state(port,id) ||
+        (port==0U && (g_backend_rtg?frf_pd_rtg_key_state(id):frf_pd_keys_state(id))));
 }
 
 static int ctrl_c_pressed(void)
@@ -364,14 +381,34 @@ int main(int argc,char **argv)
         if(!strcmp(a,"--help") || !strcmp(a,"-h")) {
             printf("%s v%s\n",FRF_PROJECT_NAME,FRF_PROJECT_VERSION);
             printf("Future Retro Fusion AmigaOS 68k native RGB/HAM6 port\n");
-            printf("Usage: %s [--output=ham6|rtg] [--window] [--scale=1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--nosound] game.md\n",argv[0]);
+            printf("Usage: %s [--output=ham6|ham8|aga64|aga128|aga256|rtg] [--window] [--rtg-mode=native|720p] [--scale=auto|1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--nosound] game.md\n",argv[0]);
             printf("Defaults: --frfcp=on --dbuf=off --renderer=accurate --audio-rate=44100 --frameskip=off --pad=3\n");
             return 0;
         }
         if(!strcmp(a,"--nosound")) { g_nosound=1; continue; }
-        if(!strcmp(a,"--window")) { g_backend_rtg=1; g_rtg_window=1; continue; }
-        if((v=opt_value(&i,argc,argv,a,"--output"))!=NULL) { if(!strcmp(v,"rtg")) g_backend_rtg=1; else if(!strcmp(v,"ham6")) g_backend_rtg=0; else {puts("Bad output (rtg|ham6)");return 5;} continue; }
-        if((v=opt_value(&i,argc,argv,a,"--scale"))!=NULL) {g_rtg_scale=atoi(v); if(g_rtg_scale<1||g_rtg_scale>4){puts("Bad scale (1..4)");return 5;} continue;}
+        if(!strcmp(a,"--window")) { g_backend_rtg=1; g_backend_aga=0; g_rtg_window=1; continue; }
+        if((v=opt_value(&i,argc,argv,a,"--output"))!=NULL) {
+            if(!strcmp(v,"rtg")) {g_backend_rtg=1;g_backend_aga=0;}
+            else if(!strcmp(v,"ham6")) {g_backend_rtg=0;g_backend_aga=0;}
+            else if(!strcmp(v,"ham8")) {g_backend_rtg=0;g_backend_aga=1;g_aga_colors=0;}
+            else if(!strcmp(v,"aga64")) {g_backend_rtg=0;g_backend_aga=1;g_aga_colors=64;}
+            else if(!strcmp(v,"aga128")) {g_backend_rtg=0;g_backend_aga=1;g_aga_colors=128;}
+            else if(!strcmp(v,"aga256")||!strcmp(v,"aga")) {g_backend_rtg=0;g_backend_aga=1;g_aga_colors=256;}
+            else {puts("Bad output (ham6|ham8|aga64|aga128|aga256|rtg)");return 5;}
+            continue;
+        }
+        if((v=opt_value(&i,argc,argv,a,"--rtg-mode"))!=NULL) {
+            if(!strcmp(v,"720p"))g_rtg_720p=1;
+            else if(!strcmp(v,"native"))g_rtg_720p=0;
+            else {puts("Bad RTG mode (native|720p)");return 5;}
+            continue;
+        }
+        if((v=opt_value(&i,argc,argv,a,"--scale"))!=NULL) {
+            if(!strcmp(v,"auto"))g_rtg_scale=0;
+            else {g_rtg_scale=atoi(v);
+                if(g_rtg_scale<1||g_rtg_scale>4){puts("Bad scale (auto|1..4)");return 5;}}
+            continue;
+        }
         if((v=opt_value(&i,argc,argv,a,"--scanlines"))!=NULL) {g_rtg_scan=atoi(v); if(g_rtg_scan!=0&&g_rtg_scan!=25&&g_rtg_scan!=50&&g_rtg_scan!=75){puts("Bad scanlines (0|25|50|75)");return 5;} continue;}
         if((v=opt_value(&i,argc,argv,a,"--frfcp"))!=NULL) {
             if(!strcmp(v,"on")||!strcmp(v,"1")) g_frfcp_enabled=1;
@@ -421,7 +458,7 @@ int main(int argc,char **argv)
         printf("%s v%s\n",FRF_PROJECT_NAME,FRF_PROJECT_VERSION);
         printf("Future Retro Fusion AmigaOS 68k native RGB/HAM6 port\n");
         printf("Target: %s\n",FRF_PROJECT_TARGET);
-        printf("Usage: %s [--output=ham6|rtg] [--window] [--scale=1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--nosound] game.md\n",argv[0]);
+        printf("Usage: %s [--output=ham6|ham8|aga64|aga128|aga256|rtg] [--window] [--rtg-mode=native|720p] [--scale=auto|1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--nosound] game.md\n",argv[0]);
         printf("Defaults: --frfcp=on --dbuf=off --renderer=accurate --audio-rate=44100 --frameskip=off --pad=3\n");
         return 5;
     }
@@ -482,7 +519,7 @@ int main(int argc,char **argv)
 
     /* V0.2.16: optional ScreenBuffer page flipping is requested before native
      * screen initialisation. Default OFF preserves V0.2.15 exactly. */
-    if(!g_backend_rtg) frf_pd_ham6_set_double_buffer(g_dbuf_enabled);
+    if(!g_backend_rtg && !g_backend_aga) frf_pd_ham6_set_double_buffer(g_dbuf_enabled);
 
     /* V0.2.16B INPUT OWNERSHIP REPAIR
      *
@@ -496,12 +533,20 @@ int main(int argc,char **argv)
     else
         printf("[FRF PD INPUT] ownership acquired BEFORE HAM6 screen init\n");
 
-    if(g_backend_rtg) {frf_pd_rtg_config(g_rtg_scale,g_rtg_scan); frf_pd_rtg_window(g_rtg_window);}
-    if(!(g_backend_rtg?frf_pd_rtg_init():frf_pd_ham6_init_for_fps(g_core_fps))) {
+    if(g_backend_rtg) {
+        frf_pd_rtg_config(g_rtg_scale,g_rtg_scan);
+        frf_pd_rtg_window(g_rtg_window);
+        frf_pd_rtg_mode_720p(g_rtg_720p);
+    }
+    if(g_backend_aga) frf_pd_aga_config(g_aga_colors);
+    if(!(g_backend_rtg?frf_pd_rtg_init():
+        (g_backend_aga?frf_pd_aga_init_for_fps(g_core_fps):
+                       frf_pd_ham6_init_for_fps(g_core_fps)))) {
         printf("Future Retro Fusion PicoDriveRGB: DirectChip screen init failed after input claim; aborting\n");
         goto out;
     }
-    g_display_hz=g_backend_rtg?(unsigned)(g_core_fps+0.5):frf_pd_ham6_refresh_hz();
+    g_display_hz=g_backend_rtg?(unsigned)(g_core_fps+0.5):
+        (g_backend_aga?frf_pd_aga_refresh_hz():frf_pd_ham6_refresh_hz());
     printf("Future Retro Fusion PicoDriveRGB: pacing core=%.3fHz display=%uHz%s\n",
            g_core_fps,g_display_hz,
            (g_core_fps>(double)g_display_hz+0.5)?" deterministic presentation ratio active":" display cadence matched");

@@ -14,6 +14,7 @@
  */
 
 #include "frf_pd_ham6.h"
+#include "frf_pd_keys.h"
 #include "frf_pd_coproc_client.h"
 
 #include <stdlib.h>
@@ -807,6 +808,7 @@ int frf_pd_ham6_init_for_fps(double fps)
     ScreenToFront(frf_screen);
     MakeScreen(frf_screen);
     RethinkDisplay();
+    frf_pd_keys_attach(frf_screen);
 
     printf("[FRF PD HAM6] DIRECT CHIP ACTIVE 320x%u depth=6 refresh=%uHz rowstride=%lu layout=%s\n",
            frf_screen_h,frf_refresh_hz,(unsigned long)frf_row_stride, frf_interleaved?"interleaved":"planar");
@@ -1114,6 +1116,7 @@ int frf_pd_ham6_active(void) { return frf_screen != NULL; }
 
 void frf_pd_ham6_shutdown(void)
 {
+    frf_pd_keys_shutdown();
     if(frf_frames) {
         printf("[FRF PD HAM6] shutdown frames=%lu chipbytes=%lu avg=%lu runs=%lu cpu3_submitted=%lu cpu3_presented=%lu cpu3_busy=%lu cpu3_stale_drop=%lu dbuf=%u flips=%lu busy=%lu change_fail=%lu full_refresh=%lu\n",
             (unsigned long)frf_frames,
