@@ -1,0 +1,4 @@
+Upstream project: notaz/picodrive
+Pinned commit: 26ecb2b6358fefba24e3d68b9eb2efba7f10d5ee
+Upstream licence: retain PicoDrive COPYING verbatim in the public full-source fork
+Future Retro Fusion port release: v0.2.16C

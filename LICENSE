@@ -1,0 +1,10 @@
+Future Retro Fusion PicoDriveRGB is a modified/derivative PicoDrive distribution.
+
+The PicoDrive redistribution terms are reproduced in COPYING_PICODRIVE and are
+the governing terms for the PicoDrive-derived distribution. The authoritative
+public repository must also retain the upstream PicoDrive COPYING file unchanged.
+
+Future Retro Fusion port changes are distributed as part of that derivative
+source tree under the PicoDrive redistribution terms where those terms apply.
+File-level third-party notices in the upstream PicoDrive/libretro sources remain
+applicable and must not be removed.

@@ -1,0 +1,6 @@
+*.o
+*.a
+*.log
+frf-port/picodrive-frf-*/
+frf-port/FRF_PicoDriveRGB_Amiga68k_*
+release/*.zip

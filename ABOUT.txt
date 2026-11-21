@@ -1,0 +1,1 @@
+Future Retro Fusion PicoDriveRGB — AmigaOS 68k Mega Drive/Genesis port with native HAM6 Direct CHIP RGB output, AHI audio, optional ScreenBuffer page flipping, and optional Emu68 ARM coprocessor acceleration.
