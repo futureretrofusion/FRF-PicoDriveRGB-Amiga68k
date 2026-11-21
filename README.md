@@ -2,10 +2,29 @@
 
 **Future Retro Fusion PicoDriveRGB** is an AmigaOS 68k port/front-end for the PicoDrive Mega Drive / Genesis emulator, with native AGA/HAM chipset video and CyberGraphX RTG output.
 
-Current public candidate: **v0.2.20 development (cross-compiled; hardware testing pending)**
+Current public candidate: **v0.2.21 development (cross-compiled; joystick hardware testing pending)**
 PicoDrive base: **notaz/picodrive commit `26ecb2b6358fefba24e3d68b9eb2efba7f10d5ee`**
 
 > Future Retro Fusion project: native RGB/HAM6 presentation, Direct CHIP updates, AHI audio transport, classic Amiga input, and an optional client for the FRF Emu68 ARM coprocessor ABI.
+
+## v0.2.21 — Amiga joystick input repair
+
+A new **direct joystick register reader** handles the ordinary digital joystick on the Amiga's physical port 2 (JOY1DAT plus the CIA-A fire bit). This is merged by default with `lowlevel.library` and `gameport.device`, so input works without depending on the OS reporting or claiming a controller. The existing CD32 buttons and keyboard input are preserved.
+
+- `--joyinput=auto` (default): use the direct joystick path, lowlevel and available gameport input
+- `--joyinput=direct`: use only direct hardware joystick polling
+- `--joyinput=lowlevel`: test `lowlevel.library` alone
+- `--joyinput=gameport`: test `gameport.device` alone (requires device unit claim)
+- `--joyport=2` (default) or `--joyport=1`: physical connector for the direct and gameport paths
+- `--joydebug`: log raw chip/CIA, lowlevel and gameport activity to the CLI
+
+Single-button joystick fire maps to Mega Drive B. Typical test:
+
+```text
+PicoDriveRGB_v0.2.21_JOYFIX --output=rtg --joyinput=direct --joyport=2 --joydebug Work:ROMs/Sonic.md
+```
+
+**Testing:** The m68k build and host-side register decoding tests pass. Physical Amiga/Emu68 joystick functionality is not yet confirmed and needs user testing.
 
 ## v0.2.20 AGA and RTG video expansion
 

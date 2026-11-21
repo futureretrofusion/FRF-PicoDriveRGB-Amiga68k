@@ -23,9 +23,9 @@ command -v "$AR" >/dev/null 2>&1 || { echo "ERROR: archiver not found: $AR" >&2;
 
 CPUFLAGS="${CPUFLAGS:--m68020}"
 OPTFLAGS="${OPTFLAGS:--O3 -fomit-frame-pointer -fno-strict-aliasing -fwrapv -fsigned-char}"
-OUT="${OUT:-$HERE/FRF_PicoDriveRGB_Amiga68k_V0_2_20_AGA_RTG}"
+OUT="${OUT:-$HERE/FRF_PicoDriveRGB_Amiga68k_V0_2_21_JOYFIX}"
 
-echo "=== Future Retro Fusion PicoDriveRGB AmigaOS 68k v0.2.20 ==="
+echo "=== Future Retro Fusion PicoDriveRGB AmigaOS 68k v0.2.21 ==="
 echo "tree: $ROOT"
 echo "CC  : $CC"
 echo "AR  : $AR"
@@ -112,4 +112,4 @@ echo "Copy to Amiga, then run:"
 echo "  $(basename "$OUT") --frfcp=on --dbuf=on --renderer=accurate --audio-rate=44100 --frameskip=off Work:roms/game.md"
 echo "A/B control: use --dbuf=off for the proven V0.2.15 CPU3 direct-front presenter."
 echo "68K control: use --frfcp=off --dbuf=off."
-echo "Future Retro Fusion v0.2.20: --dbuf=on enables optional HAM6 ScreenBuffer flipping; --dbuf=off remains the default. See docs/VIDEO_MODES.md for AGA / RTG."
+echo "Future Retro Fusion v0.2.21: --dbuf=on enables optional HAM6 ScreenBuffer flipping; --dbuf=off remains the default. See docs/VIDEO_MODES.md for AGA / RTG."

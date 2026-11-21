@@ -23,7 +23,7 @@
 #include <libretro.h>
 
 #define FRF_PROJECT_NAME "Future Retro Fusion PicoDriveRGB"
-#define FRF_PROJECT_VERSION "0.2.20"
+#define FRF_PROJECT_VERSION "0.2.21"
 #define FRF_PROJECT_TARGET "AmigaOS 68k / HAM6, HAM8, AGA or CyberGraphX RTG"
 
 #include "frf_pd_ham6.h"
@@ -49,6 +49,7 @@ static const char *g_audio_rate="44100";
 static int g_frfcp_enabled=1;
 static int g_dbuf_enabled=0;
 static int g_backend_rtg=0, g_backend_aga=0, g_aga_colors=256;
+static int g_joy_mode=0, g_joy_port=2, g_joy_debug=0;
 static int g_rtg_scale=2, g_rtg_scan=0, g_rtg_window=0, g_rtg_720p=0;
 static int g_timer_ok;
 static void (*g_audio_status_cb)(bool,unsigned,bool);
@@ -381,11 +382,26 @@ int main(int argc,char **argv)
         if(!strcmp(a,"--help") || !strcmp(a,"-h")) {
             printf("%s v%s\n",FRF_PROJECT_NAME,FRF_PROJECT_VERSION);
             printf("Future Retro Fusion AmigaOS 68k native RGB/HAM6 port\n");
-            printf("Usage: %s [--output=ham6|ham8|aga64|aga128|aga256|rtg] [--window] [--rtg-mode=native|720p] [--scale=auto|1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--nosound] game.md\n",argv[0]);
+            printf("Usage: %s [--output=ham6|ham8|aga64|aga128|aga256|rtg] [--window] [--rtg-mode=native|720p] [--scale=auto|1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--joyinput=auto|direct|lowlevel|gameport] [--joyport=1|2] [--joydebug] [--nosound] game.md\n",argv[0]);
             printf("Defaults: --frfcp=on --dbuf=off --renderer=accurate --audio-rate=44100 --frameskip=off --pad=3\n");
             return 0;
         }
         if(!strcmp(a,"--nosound")) { g_nosound=1; continue; }
+        if(!strcmp(a,"--joydebug")) { g_joy_debug=1; continue; }
+        if((v=opt_value(&i,argc,argv,a,"--joyinput"))!=NULL) {
+            if(!strcmp(v,"auto"))g_joy_mode=0;
+            else if(!strcmp(v,"direct"))g_joy_mode=1;
+            else if(!strcmp(v,"lowlevel"))g_joy_mode=2;
+            else if(!strcmp(v,"gameport"))g_joy_mode=3;
+            else {puts("Bad joyinput (auto|direct|lowlevel|gameport)");return 5;}
+            continue;
+        }
+        if((v=opt_value(&i,argc,argv,a,"--joyport"))!=NULL) {
+            if(!strcmp(v,"1"))g_joy_port=1;
+            else if(!strcmp(v,"2"))g_joy_port=2;
+            else {puts("Bad joyport (1|2)");return 5;}
+            continue;
+        }
         if(!strcmp(a,"--window")) { g_backend_rtg=1; g_backend_aga=0; g_rtg_window=1; continue; }
         if((v=opt_value(&i,argc,argv,a,"--output"))!=NULL) {
             if(!strcmp(v,"rtg")) {g_backend_rtg=1;g_backend_aga=0;}
@@ -458,7 +474,7 @@ int main(int argc,char **argv)
         printf("%s v%s\n",FRF_PROJECT_NAME,FRF_PROJECT_VERSION);
         printf("Future Retro Fusion AmigaOS 68k native RGB/HAM6 port\n");
         printf("Target: %s\n",FRF_PROJECT_TARGET);
-        printf("Usage: %s [--output=ham6|ham8|aga64|aga128|aga256|rtg] [--window] [--rtg-mode=native|720p] [--scale=auto|1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--nosound] game.md\n",argv[0]);
+        printf("Usage: %s [--output=ham6|ham8|aga64|aga128|aga256|rtg] [--window] [--rtg-mode=native|720p] [--scale=auto|1|2|3|4] [--scanlines=0|25|50|75] [--frfcp=on|off] [--dbuf=on|off] [--renderer=fast|good|accurate] [--audio-rate=22050|44100] [--frameskip=auto|off|manual] [--threshold=33] [--pad=3|6] [--joyinput=auto|direct|lowlevel|gameport] [--joyport=1|2] [--joydebug] [--nosound] game.md\n",argv[0]);
         printf("Defaults: --frfcp=on --dbuf=off --renderer=accurate --audio-rate=44100 --frameskip=off --pad=3\n");
         return 5;
     }
@@ -528,6 +544,7 @@ int main(int argc,char **argv)
      * then sal_VideoInit) and avoids making joystick acquisition depend on
      * Intuition/custom-screen ownership.  AHI remains after video so the
      * recovered V0.2.6 CHIP-allocation safety is otherwise preserved. */
+    frf_pd_input_config(g_joy_mode,g_joy_port,g_joy_debug);
     if(!frf_pd_input_init())
         printf("[FRF PD INPUT] WARNING: no controller backend acquired before video init\n");
     else
