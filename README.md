@@ -7,6 +7,10 @@ PicoDrive base: **notaz/picodrive commit `26ecb2b6358fefba24e3d68b9eb2efba7f10d5
 
 > Future Retro Fusion project: native RGB/HAM6 presentation, Direct CHIP updates, AHI audio transport, classic Amiga input, and an optional client for the FRF Emu68 ARM coprocessor ABI.
 
+## Standalone PicoDriveGUI launcher (v0.1)
+
+A separate AmigaOS 68k GadTools GUI is now available to select a ROM, configure **all v0.2.21 command-line options** across Video, Performance, Input and Audio pages, save settings and launch the emulator. The GUI is a separate executable and does not change PicoDrive's core. See [GUI documentation](gui/README.md). The native executable is provided as a GitHub release asset; runtime testing on Amiga hardware remains outstanding.
+
 ## v0.2.21 — Amiga joystick input repair
 
 A new **direct joystick register reader** handles the ordinary digital joystick on the Amiga's physical port 2 (JOY1DAT plus the CIA-A fire bit). This is merged by default with `lowlevel.library` and `gameport.device`, so input works without depending on the OS reporting or claiming a controller. The existing CD32 buttons and keyboard input are preserved.
