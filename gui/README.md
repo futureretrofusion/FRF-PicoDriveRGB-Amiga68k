@@ -2,13 +2,13 @@
 
 PicoDriveGUI is a **separate AmigaOS 3.x 68020+ native GadTools program**. It does not modify the emulator executable. It opens on Workbench, selects a Mega Drive ROM and an installed PicoDriveRGB executable, lets you configure every v0.2.21 CLI option, and starts the emulator. When the game exits, the launcher window returns.
 
-**Development build: hardware runtime not yet verified.** The Amiga 68k cross-compile/link passes. No ROMs are distributed.
+**v0.2 source candidate: not yet compiled or hardware tested.** The Studio build host is offline. The previous v0.1 binary is not this revision. No ROMs are distributed.
 
 ## Installation
 
-Copy **PicoDriveGUI** and **PicoDriveRGB_v0.2.21_JOYFIX** to the same Amiga directory (or select the executable from its actual location). Run PicoDriveGUI from the CLI, or launch it from Workbench after providing a suitable icon. Use **Choose ROM** to select an .md/.bin/.gen game. Use **Choose EXE** to select the emulator if it is not found.
+Copy **PicoDriveGUI** and **PicoDriveRGB_v0.2.21_JOYFIX** to the same Amiga directory (or select the executable from its actual location). Run PicoDriveGUI from the CLI, or launch it from Workbench after providing a suitable icon. Click **SELECT ROM...** to choose an .md/.bin/.gen game, then **PLAY GAME**. Both controls are always visible. Use **Choose emulator** if the executable is not found.
 
-The GUI is paged to fit a standard 640x256 Workbench display, including non-RTG PAL. It uses GadTools and asl.library; no MUI or Reaction dependencies.
+The compact two-column layout uses Topaz 8 and is designed for a 640x200 or larger Workbench screen (including native PAL and RTG). It uses GadTools and asl.library; no MUI or Reaction dependencies.
 
 ### Pages
 
@@ -17,7 +17,7 @@ The GUI is paged to fit a standard 640x256 Workbench display, including non-RTG 
 - **Input**: Mega Drive 3/6-button pad; joystick backend auto/direct/lowlevel/gameport; physical Amiga port 2/1; joystick debug.
 - **Audio**: audio enabled/disabled; 44100/22050 Hz.
 
-The ROM and emulator paths remain visible on every page. **Save prefs** writes `PicoDriveGUI.prefs` in the current working directory. **Defaults** resets settings (but retains the selected paths). **Launch game** closes the launcher window, runs PicoDriveRGB, then restores the launcher when PicoDrive exits (ESC or Ctrl+C). The launch command is logged to the CLI for troubleshooting.
+The ROM and emulator paths remain visible on every page. **Save preferences** writes `PicoDriveGUI.prefs` beside the launcher. **Restore defaults** resets settings (but retains the selected paths). **PLAY GAME** closes the launcher window, runs PicoDriveRGB, then restores the launcher when PicoDrive exits (ESC or Ctrl+C). The launch command is logged to the CLI for troubleshooting.
 
 The GUI does not yet offer game-library artwork, an on-screen FPS meter, or an explicit RTG 60 Hz selection because those features are not present in the v0.2.21 emulator CLI.
 
@@ -30,7 +30,7 @@ The GUI does not yet offer game-library artwork, an on-screen FPS meter, or an e
 Or build to an explicit destination:
 
 ```sh
-./gui/build.sh /home/fff2025/Downloads/PicoDriveGUI_v0.1
+./gui/build.sh /home/fff2025/Downloads/PicoDriveGUI_v0.2
 ```
 
 Requires the AmigaOS cross compiler at `/opt/amiga/bin/m68k-amigaos-gcc` (or set `AMIGA_CC`).
